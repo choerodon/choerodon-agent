@@ -1,7 +1,6 @@
 package worker
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/golang/glog"
@@ -14,9 +13,10 @@ import (
 	"github.com/choerodon/choerodon-agent/pkg/helm"
 	"github.com/choerodon/choerodon-agent/pkg/kube"
 	"github.com/choerodon/choerodon-agent/pkg/model"
-	"encoding/json"
 	"os"
 	"io/ioutil"
+	"fmt"
+	"encoding/json"
 )
 
 var (
@@ -71,10 +71,8 @@ func NewWorkerManager(
 
 func (w *workerManager) Start(stop <-chan struct{}, wg *sync.WaitGroup) {
 	gitconfigChan :=  make(chan  model.GitInitConfig,1 )
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go w.runWorker(i, stop, gitconfigChan, wg)
-	}
+	wg.Add(1)
+	go w.runWorker( stop, gitconfigChan, wg)
 	if w.gitConfig.GitUrl == "" {
 		for {
 			gitConfig := <- gitconfigChan
@@ -103,7 +101,7 @@ func (w *workerManager) Start(stop <-chan struct{}, wg *sync.WaitGroup) {
 	go w.syncLoop(stop, wg)
 }
 
-func (w *workerManager) runWorker(i int, stop <-chan struct{}, gitConfig chan <- model.GitInitConfig , done *sync.WaitGroup) {
+func (w *workerManager) runWorker(stop <-chan struct{}, gitConfig chan <- model.GitInitConfig , done *sync.WaitGroup) {
 	defer done.Done()
 
 	for {
@@ -112,39 +110,42 @@ func (w *workerManager) runWorker(i int, stop <-chan struct{}, gitConfig chan <-
 				glog.Infof("worker down!")
 				return
 			case cmd := <-w.commandChan:
-				glog.Infof("get command: %s/%s",  cmd.Key, cmd.Type)
-				var newCmds []*model.Command = nil
-				var resp *model.Response = nil
+				go func(cmd * model.Command) {
+					glog.Infof("get command: %s/%s",  cmd.Key, cmd.Type)
+					var newCmds []*model.Command = nil
+					var resp *model.Response = nil
 
-				if processCmdFunc, ok := processCmdFuncs[cmd.Type]; !ok {
-					err := fmt.Errorf("type %s not exist", cmd.Type)
-					glog.V(2).Info(err.Error())
-					resp = NewResponseError(cmd.Key, cmd.Type, err)
-				} else {
-					newCmds, resp = processCmdFunc(w, cmd)
-				}
-
-				if newCmds != nil {
-					go func(newCmds []*model.Command) {
-						for i := 0; i < len(newCmds); i++ {
-							w.commandChan <- newCmds[i]
-						}
-					}(newCmds)
-				}
-				if resp != nil {
-					if resp.Type == model.InitAgent{
-						var config model.GitInitConfig
-						err := json.Unmarshal([]byte(resp.Payload), &config)
-						if err != nil {
-							glog.Errorf("unmarshal git config error", err)
-						}
-						gitConfig <- config
-						break;
+					if processCmdFunc, ok := processCmdFuncs[cmd.Type]; !ok {
+						err := fmt.Errorf("type %s not exist", cmd.Type)
+						glog.V(2).Info(err.Error())
+						resp = NewResponseError(cmd.Key, cmd.Type, err)
+					} else {
+						newCmds, resp = processCmdFunc(w, cmd)
 					}
-					go func(resp *model.Response) {
-						w.responseChan <- resp
-					}(resp)
-				}
+
+					if newCmds != nil {
+						go func(newCmds []*model.Command) {
+							for i := 0; i < len(newCmds); i++ {
+								w.commandChan <- newCmds[i]
+							}
+						}(newCmds)
+					}
+					if resp != nil {
+						if resp.Type == model.InitAgent{
+							var config model.GitInitConfig
+							err := json.Unmarshal([]byte(resp.Payload), &config)
+							if err != nil {
+								glog.Errorf("unmarshal git config error", err)
+							}
+							gitConfig <- config
+							return
+						}
+						go func(resp *model.Response) {
+							w.responseChan <- resp
+						}(resp)
+					}
+
+				}(cmd)
 			}
 	}
 }
