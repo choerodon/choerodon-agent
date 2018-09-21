@@ -110,15 +110,14 @@ func (w *workerManager) runWorker(stop <-chan struct{}, gitConfig chan <- model.
 				glog.Infof("worker down!")
 				return
 			case cmd := <-w.commandChan:
-				go func(cmd * model.Command) {
+				go func(cmd *model.Command) {
 					glog.Infof("get command: %s/%s",  cmd.Key, cmd.Type)
 					var newCmds []*model.Command = nil
 					var resp *model.Response = nil
 
 					if processCmdFunc, ok := processCmdFuncs[cmd.Type]; !ok {
 						err := fmt.Errorf("type %s not exist", cmd.Type)
-						glog.V(2).Info(err.Error())
-						resp = NewResponseError(cmd.Key, cmd.Type, err)
+						glog.V(1).Info(err.Error())
 					} else {
 						newCmds, resp = processCmdFunc(w, cmd)
 					}
@@ -146,7 +145,7 @@ func (w *workerManager) runWorker(stop <-chan struct{}, gitConfig chan <- model.
 					}
 
 				}(cmd)
-			}
+		}
 	}
 }
 
