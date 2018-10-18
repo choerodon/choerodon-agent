@@ -171,6 +171,8 @@ func (c *client) InstallRelease(request *model_helm.InstallReleaseRequest) (*mod
 		return nil, fmt.Errorf("load chart: %v", err)
 	}
 
+	chartutil.ProcessRequirementsEnabled(chartRequested,&chart.Config{Raw: request.Values})
+
 	hooks, manifestDoc, err := c.renderManifests(
 		chartRequested,
 		request.ReleaseName,
@@ -333,6 +335,8 @@ func (c *client) UpgradeRelease(request *model_helm.UpgradeReleaseRequest) (*mod
 	if err != nil {
 		return nil, fmt.Errorf("load chart: %v", err)
 	}
+
+	chartutil.ProcessRequirementsEnabled(chartRequested,&chart.Config{Raw: request.Values})
 
 	hooks, manifestDoc, err := c.renderManifests(
 		chartRequested,
